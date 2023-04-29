@@ -31,17 +31,17 @@ def extract_info(image):
     k['Name'] = l[0]
     k['Designation'] = l[1]
     for i in range(len(l)):
-        if re.findall("[a-zA-Z0-9]+ [a-zA-Z0-9]+ [ St]+", l[i]):
+        if re.findall("[a-zA-Z0-9]+ [a-zA-Z0-9]+ [ St]+", l[i]): #match the string containing the area information
             k['Area'] = (l[i])
-        if re.search('[^- +a-zA-z]{6}', l[i]):
+        if re.search('[^- +a-zA-z]{6}', l[i]): #match the string containing the pincode information
             res = l[i]
             result = [int(l[i]) for l[i] in res.split() if l[i].isdigit()]
             k['Pincode'] = result[0]
-        if re.findall("[^A-Z0-9.-_+~!@#$ %&*()]+@+[a-zA-Z0-9]+.[a-z]+", l[i]):
+        if re.findall("[^A-Z0-9.-_+~!@#$ %&*()]+@+[a-zA-Z0-9]+.[a-z]+", l[i]): #match the string containing the email information
             k['Email'] = l[i]
-        if re.findall("[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]", l[i]):
+        if re.findall("[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]", l[i]): #match the string containing the phone number information
             k['Number'] = l[i]
-        if re.findall('[^ ,0-9!@#$%&*()_+]+[A-Za-z]+.com', l[i]):
+        if re.findall('[^ ,0-9!@#$%&*()_+]+[A-Za-z]+.com', l[i]): #match the string containing the website information
             k["Website"] = l[i]
 
     return k
