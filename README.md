@@ -1,5 +1,9 @@
 # Business Card Extractor
+
+## Application Link: https://kavinprasad05-data-extraction-from-image-code-y55x03.streamlit.app/
+
 This is a Streamlit app that allows users to extract information from a business card image and save it to a SQLite database. The app uses the EasyOCR library to extract text from the image and OpenCV for image processing. The extracted information includes the name, designation, phone number, email, website, area, and pincode.
+
 ## Getting Started
 To run the app locally, follow these steps:
 
@@ -22,6 +26,7 @@ To run the app locally, follow these steps:
 7:Click on the "view data" button to view the saved data from the SQLite database.
 
 8:Click on the "Delete data" button to delete the saved data from the SQLite database.
+
 ## Dependencies
 The following libraries are used in this project:
 
@@ -40,6 +45,7 @@ The following libraries are used in this project:
 *re
 
 *SQLite
+
 ## Author
 This project was created by K.Kavin Prasad. Feel free to reach out with any questions or suggestions!
 
