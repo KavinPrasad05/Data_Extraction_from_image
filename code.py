@@ -1,96 +1,214 @@
-import streamlit as st  # Import the Streamlit library for building the app UI
-import easyocr  # Import the EasyOCR library for extracting text from the image
-import cv2  # Import the OpenCV library for image processing
-import numpy as np  # Import the NumPy library for numerical operations
-import pandas as pd  # Import the Pandas library for data manipulation
-from PIL import Image  # Import the Python Imaging Library for image handling
-import re  # Import the re library for regular expression pattern matching
-import sqlite3  # Import the SQLite library for database operations
+import io
+import sqlite3
+import re
+import easyocr as ocr
+import streamlit as st
+from PIL import Image
+import numpy as np
+st. set_page_config(layout="wide")
 
-# Set up the page title and description
-st.set_page_config(page_title='Business Card Extractor', page_icon=':credit_card:', layout='wide')
-st.title('Business Card Extractor')
-st.write('Upload an image of a business card to extract its information')
+conn = sqlite3.connect('business_cards.db')
+cursor = conn.cursor()
+cursor.execute('''CREATE TABLE IF NOT EXISTS business_cards (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+               website_url TEXT, email TEXT, pin_code TEXT, phone_numbers TEXT, address TEXT, card_holder_details TEXT, card_id TEXT, image_data BLOB)''')
 
-# Create a file uploader widget
-uploaded_file = st.file_uploader(label='Upload a business card image', type=['jpg', 'jpeg', 'png'])
 
-# Define a function to extract the business card information
-def extract_info(image):
-    # Load the image using OpenCV
-    image = cv2.imdecode(np.frombuffer(image.read(), np.uint8), cv2.IMREAD_COLOR)
+def format_title(title: str):
+    formatted_title = f"<div style='padding:10px;background-color:rgb(230, 0, 172, 0.3);border-radius:10px'><h1 style='color:rgb(204, 0, 153);text-align:center;'>{title}</h1></div>"
+    return formatted_title
 
-    # Use EasyOCR to extract text from the image
-    read = easyocr.Reader(['en'])
-    l = read.readtext(image, detail=0, paragraph=False)
 
-    # Create a dictionary to store the extracted information
-    k = {'Name': "", 'Designation': "", 'Number': "", 'Email': "", 'Website': "", 'Area': "", 'Pincode': ""}
+st.markdown(format_title(
+    "Text Extraction From Business-Card Image With OCR"), unsafe_allow_html=True)
+st.write(" ")
+st.write(" ")
+st.write(" ")
+st.write("## UPLOAD ANY BUSINESS CARD IMAGE TO EXTRACT INFORMATION ")
+CD, col1, col2, col3 = st.columns([0.5, 5, 1, 5])
+with col1:
+    st.write("#### SELECT IMAGE")  # upload
+    image = st.file_uploader(label="", type=['png', 'jpg', 'jpeg'])
 
-    # Parse the text to extract the relevant information
-    k['Name'] = l[0]
-    k['Designation'] = l[1]
-    for i in range(len(l)):
-        if re.findall("[a-zA-Z0-9]+ [a-zA-Z0-9]+ [ St]+", l[i]): #match the string containing the area information
-            k['Area'] = (l[i])
-        if re.search('[^- +a-zA-z]{6}', l[i]): #match the string containing the pincode information
-            res = l[i]
-            result = [int(l[i]) for l[i] in res.split() if l[i].isdigit()]
-            k['Pincode'] = result[0]
-        if re.findall("[^A-Z0-9.-_+~!@#$ %&*()]+@+[a-zA-Z0-9]+.[a-z]+", l[i]): #match the string containing the email information
-            k['Email'] = l[i]
-        if re.findall("[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]", l[i]): #match the string containing the phone number information
-            k['Number'] = l[i]
-        if re.findall('[^ ,0-9!@#$%&*()_+]+[A-Za-z]+.com', l[i]): #match the string containing the website information
-            k["Website"] = l[i]
 
-    return k
+@ st.cache_data
+def load_model():
+    reader = ocr.Reader(['en'])
+    return reader
 
-# Create a button to extract the business card information
-if uploaded_file is not None:
-    st.image(uploaded_file, caption='Uploaded business card', use_column_width=True)
-    k = extract_info(uploaded_file)
-    if st.button('Extract information'):
-        st.write('Extracted information:')
-        st.write(k)
 
-    # Create a button to save the extracted information to a SQLite database
-    if st.button("Save data to database!"):
-        # Connect to the SQLite database
-        conn = sqlite3.connect('Bizxcard.sqlite')
-        table_name = k['Name']
-        # Define the table schema and create the table if it doesn't exist
-        query = f'''Create table if not Exists 
-                 {table_name} (Name text,Designation text,Number text, Email text, Website text,Area text,
-                state text,pincode integer)'''
-        conn.execute(query)
-        new_df = pd.DataFrame(k, index=[1])
-        new_df['Website'] = new_df['Website'].apply(lambda x: x.replace(" ", "."))
-        new_df['Area'] = new_df['Area'].apply(lambda x: x.replace(";", "."))
-        new_df['Area'] = new_df['Area'].apply(lambda x: x.replace(" ", ""))
-        new_df['Area'] = new_df['Area'].apply(lambda x: x.replace(",,", ","))
-        new_df.to_sql(table_name, conn, if_exists='replace', index=False)
-        st.write("done")
+reader = load_model()  # load model
+if image is not None:
+    input_image = Image.open(image)  # read image
+    with col1:
+        st.image(input_image)  # display image
+        st.write(" ")
+    result = reader.readtext(np.array(input_image))
+    result_text = []  # empty list for results
+    for text in result:
+        result_text.append(text[1])
+
+    PH = []
+    PHID = []
+    ADD = set()
+    AID = []
+    EMAIL = ''
+    EID = ''
+    PIN = ''
+    PID = ''
+    WEB = ''
+    WID = ''
+    for i, string in enumerate(result_text):
+        if re.search(r'@', string.lower()):  # email
+            EMAIL = string.lower()
+            EID = i
+        match = re.search(r'\d{6,7}', string.lower())  # pincode
+        if match:
+            PIN = match.group()
+            PID = i
+        match = re.search(
+            r'(?:ph|phone|phno)?\s*(?:[+-]?\d\s*[\(\)]*){7,}', string)
+        if match and len(re.findall(r'\d', string)) > 7:  # phone no.
+            PH.append(string)
+            PHID.append(i)
+        # Address
+        keywords = ['road', 'floor', ' st ', 'st,', 'street', ' dt ', 'district',
+                    'near', 'beside', 'opposite', ' at ', ' in ', 'center', 'main road',
+                    'state', 'country', 'post', 'zip', 'city', 'zone', 'mandal', 'town', 'rural',
+                    'circle', 'next to', 'across from', 'area', 'building', 'towers', 'village',
+                    ' ST ', ' VA ', ' VA,', ' EAST ', ' WEST ', ' NORTH ', ' SOUTH ']
+        # Define the regular expression pattern to match six or seven continuous digits
+        digit_pattern = r'\d{6,7}'
+        # Check if the string contains any of the keywords or a sequence of six or seven digits
+        if any(keyword in string.lower() for keyword in keywords) or re.search(digit_pattern, string):
+            ADD.add(string)
+            AID.append(i)
+        states = ['Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+                  'Haryana', 'Hyderabad', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+                  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+                  'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+                  "India"]
+        if any(state in string.lower() for state in states):  # States
+            ADD.add(string)
+            AID.append(i)
+        if re.match(r"(?!.*@)(www|.*com$)", string):  # Website
+            WEB = string.lower()
+            WID = i
+    with col3:
+        # DISPLAY ALL THE ELEMENTS OF BUSINESS CARD
+        st.write("##### EXTRACTED TEXT")
+        st.write('###### :red[WEBSITE URL: ] ' + str(WEB))
+        st.write('###### :red[EMAIL: ] ' + str(EMAIL))
+        st.write('###### :red[PIN CODE: ] ' + str(PIN))
+        ph_str = ', '.join(PH)
+        st.write('###### :red[PHONE NUMBER(S): ] '+ph_str)
+        add_str = ' '.join([str(elem) for elem in ADD])
+        st.write('###### :red[ADDRESS: ] ', add_str)
+
+        IDS = [EID, PID, WID]
+        IDS.extend(AID)
+        IDS.extend(PHID)
+        # st.write(result_text)
+        oth = ''
+        fin = []
+        for i, string in enumerate(result_text):
+            if i not in IDS:
+                if len(string) >= 4 and ',' not in string and '.' not in string and 'www.' not in string:
+                    if not re.match("^[0-9]{0,3}$", string) and not re.match("^[^a-zA-Z0-9]+$", string):
+                        numbers = re.findall('\d+', string)
+                        if len(numbers) == 0 or all(len(num) < 3 for num in numbers) and not any(num in string for num in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']*3):
+                            fin.append(string)
+        st.write('###### :red[CARD HOLDER & COMPANY DETAILS: ] ')
+        for i in fin:
+            st.write('###### '+i)
+
+        UP = st.button('UPLOAD TO DATABASE', key=90)
+# DATABASE CODE
+    website = str(WEB)
+    email = str(EMAIL)
+    pincode = str(PIN)
+    phoneno = ph_str
+    address = add_str
+    det_str = ' '.join([str(elem) for elem in fin])
+    details = det_str
+    card_id = ', '.join(map(str, IDS))
+    image.seek(0)
+    image_data = image.read()
+    
+
+    if UP:
+        if image is not None:
+            inp_data = (website, email, pincode, phoneno,
+                        address, details, card_id, image_data)
+            cursor.execute(f"INSERT INTO business_cards (website_url, email, pin_code, phone_numbers, address, card_holder_details, card_id, image_data) VALUES (?,?,?,?,?,?,?,?)",inp_data)
+            conn.commit()
+        else:
+            st.write('Please upload business card')
+            st.write(' ')
+            st.write(' ')
+            st.write(' ')
+
+col1.markdown(
+    "<style>div[data-testid='stHorizontalBlock'] { background-color: rgb(230, 0, 172, 0.1); }</style>", unsafe_allow_html=True)
+# DATABASE PART
+st.write('### EXPLORE BUSINESS CARDS DATABASE ')
+cd, c1, c2, c3 = st.columns([0.5, 4, 1, 4])
+with c1:
+    st.write(' ')
+    st.write("#### BUSINESS CARDS AVAILABLE IN DATABASE")
+    cursor.execute(f"SELECT id FROM business_cards")
+    rows = cursor.fetchall()
+    l = []
+    # DISPLAY ALL THE CARDS AS BUTTONS
+    for row in rows:
+        l.append(row[0])
+        button_label = f"SHOW BUSINESS CARD: {row[0]}"
+        if st.button(button_label):
+            cursor.execute(
+                f"SELECT * FROM business_cards WHERE id ="+str(row[0]))
+            row1 = cursor.fetchone()
+            website_url = row1[1]
+            email = row1[2]
+            pin_code = row1[3]
+            phone_numbers = row1[4]
+            address = row1[5]
+            card_holder_details = row1[6]
+            card_id = row1[7]
+
+            # DISPLAY SELECTED CARD DETAILS
+            with c3:
+                st.write(f"#### BUSINESS CARD {row[0]} DETAILS ")
+                st.write(f"Website: {website_url}")
+                st.write(f"Email: {email}")
+                st.write(f"PIN Code: {pin_code}")
+                st.write(f"Phone Numbers: {phone_numbers}")
+                st.write(f"Address: {address}")
+                st.write(
+                    f"Card Holder & Company Details: {card_holder_details}")
+
+                # If the button is clicked, display the corresponding row
+                cursor.execute(
+                    "SELECT image_data FROM business_cards WHERE id ="+str(row[0]))
+                r = cursor.fetchone()
+                if r is not None:
+                    image_data = r[0]
+                    image = Image.open(io.BytesIO(image_data))
+                    st.image(image)
+                st.write(' ')
+
+
+# DELETE MULTIPLE ENTRIES
+with c1:
+    st.write(' ')
+    st.write(f"#### SELECT ENTRIES TO DELETE")
+    selected_options = st.multiselect('', l)
+
+    if st.button('DELETE SELECTED ENTRIES'):
+        for option in selected_options:
+            cursor.execute(
+                "DELETE FROM business_cards WHERE card_id = ?", (option,))
         conn.commit()
-        conn.close()
+        st.write("DELETED SELECTED BUSINESS CARD ENTRIES SUCCESSFULLY")
+    st.write(' ')
+    st.write(' ')
 
-    if st.button("view data"):
-        table_name = k['Name']
-        conn = sqlite3.connect('Bizxcard.sqlite')
-        query = f'''select * from {table_name} '''
-        r_df = pd.read_sql(query, conn)
-        st.table(r_df)
-        conn.commit()
-        conn.close()
-
-    if st.button("Delete data "):
-        table_name= st.text_input(
-        "Enter some text 👇",
-        label_visibility=st.session_state.visibility,
-        disabled=st.session_state.disabled,
-        placeholder=st.session_state.placeholder,)
-
-        conn = sqlite3.connect('Bizxcard.sqlite')
-        query = f'''drop table {table_name} '''
-        pd.read_sql(query, conn)
-        st.write("Information deleted")
+st.balloons()
