@@ -14,7 +14,7 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS business_cards (id INTEGER PRIMARY 
 
 
 def format_title(title: str):
-    formatted_title = f"<div style='padding:10px;background-color:rgb(128, 0, 128);border-radius:10px'><h1 style='color:rgb(0, 0, 0);text-align:center;'>{title}</h1></div>"
+    formatted_title = f"<div style='padding:10px;background-color:rgb(255, 192, 203);border-radius:10px'><h1 style='color:rgb(0, 0, 0);text-align:center;'>{title}</h1></div>"
     return formatted_title
 
 
